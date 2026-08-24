@@ -1,0 +1,2 @@
+# Включаем встроенный httpd busybox — раздаёт /opt/trinity/app на 127.0.0.1:8080
+CONFIG_HTTPD=y

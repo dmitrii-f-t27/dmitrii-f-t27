@@ -1,0 +1,15 @@
+# Дополнения к board/trinity/linux.config (базовый — из buildroot board/pc).
+
+# AMD GPU (базовый конфиг покрывает только Intel i915 и virtio/qxl/bochs)
+CONFIG_DRM_AMDGPU=m
+
+# Консоль поверх DRM и явный ввод (USB-клавиатура/мышь, PS/2)
+CONFIG_FRAMEBUFFER_CONSOLE=y
+CONFIG_DRM_FBDEV_EMULATION=y
+CONFIG_HID=y
+CONFIG_HID_GENERIC=y
+CONFIG_USB_HID=y
+CONFIG_KEYBOARD_ATKBD=y
+
+# Сетевые карты современных mini-PC (Intel 2.5G)
+CONFIG_IGC=m

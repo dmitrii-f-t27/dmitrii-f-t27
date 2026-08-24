@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Trinity OS — Worldview Lite</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="https://cdn.jsdelivr.net/npm/cesium@1.119/Build/Cesium/Cesium.js"></script>
+<link href="https://cdn.jsdelivr.net/npm/cesium@1.119/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
+<style>
+  html, body, #globe { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; overflow: hidden; }
+  .hud {
+    position: fixed; z-index: 10; color: #7fff9f; font: 12px/1.6 monospace;
+    text-shadow: 0 0 6px rgba(127,255,159,.7); pointer-events: none;
+  }
+  #hud-tl { top: 12px; left: 14px; }
+  #hud-br { right: 14px; bottom: 10px; text-align: right; }
+  /* CRT-развёртка — привет видео Bilawal'а */
+  #crt {
+    position: fixed; inset: 0; z-index: 9; pointer-events: none;
+    background: repeating-linear-gradient(0deg, rgba(0,0,0,.16) 0 1px, transparent 1px 3px);
+    mix-blend-mode: multiply;
+  }
+  .cesium-viewer-bottom { display: none; } /* убираем логотипы с киоска */
+</style>
+</head>
+<body>
+<div id="globe"></div>
+<div id="crt"></div>
+<div class="hud" id="hud-tl">
+  TRINITY OS // L0 KIOSK<br>
+  <span id="st-planes">ADS-B: —</span><br>
+  <span id="st-quakes">SEISMIC: —</span>
+</div>
+<div class="hud" id="hud-br"><span id="clock">--:--:--</span> UTC</div>
+
+<script>
+"use strict";
+
+const viewer = new Cesium.Viewer("globe", {
+  baseLayer: new Cesium.ImageryLayer(new Cesium.OpenStreetMapImageryProvider({
+    url: "https://tile.openstreetmap.org/",
+  })),
+  baseLayerPicker: false, geocoder: false, homeButton: false, timeline: false,
+  animation: false, sceneModePicker: false, navigationHelpButton: false,
+  fullscreenButton: false, selectionIndicator: false, infoBox: false,
+  requestRenderMode: false,
+});
+viewer.scene.globe.enableLighting = true;
+viewer.camera.flyHome(0);
+
+// --- Землетрясения: USGS, обновление раз в 5 минут -------------------------
+const quakes = viewer.scene.primitives.add(new Cesium.PointPrimitiveCollection());
+async function loadQuakes() {
+  try {
+    const r = await fetch("https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_day.geojson");
+    const gj = await r.json();
+    quakes.removeAll();
+    for (const f of gj.features) {
+      const [lon, lat] = f.geometry.coordinates;
+      const mag = f.properties.mag || 0;
+      quakes.add({
+        position: Cesium.Cartesian3.fromDegrees(lon, lat),
+        pixelSize: Math.max(4, mag * 3),
+        color: Cesium.Color.RED.withAlpha(0.85),
+        outlineColor: Cesium.Color.YELLOW.withAlpha(0.6),
+        outlineWidth: 1,
+      });
+    }
+    document.getElementById("st-quakes").textContent =
+      `SEISMIC: ${gj.features.length} events / 24h`;
+  } catch (e) {
+    document.getElementById("st-quakes").textContent = "SEISMIC: offline";
+  }
+}
+loadQuakes();
+setInterval(loadQuakes, 5 * 60 * 1000);
+
+// --- Самолёты: OpenSky, обновление раз в 90 секунд (анонимный лимит) -------
+const planes = viewer.scene.primitives.add(new Cesium.PointPrimitiveCollection());
+async function loadPlanes() {
+  try {
+    const r = await fetch("https://opensky-network.org/api/states/all");
+    const data = await r.json();
+    planes.removeAll();
+    let n = 0;
+    for (const s of data.states || []) {
+      const lon = s[5], lat = s[6], alt = s[13] || s[7] || 0;
+      if (lon == null || lat == null) continue;
+      planes.add({
+        position: Cesium.Cartesian3.fromDegrees(lon, lat, Math.max(alt, 0)),
+        pixelSize: 2.5,
+        color: Cesium.Color.CYAN.withAlpha(0.9),
+      });
+      n++;
+    }
+    document.getElementById("st-planes").textContent = `ADS-B: ${n} aircraft live`;
+  } catch (e) {
+    document.getElementById("st-planes").textContent = "ADS-B: offline / rate-limited";
+  }
+}
+loadPlanes();
+setInterval(loadPlanes, 90 * 1000);
+
+// --- Часы -------------------------------------------------------------------
+setInterval(() => {
+  document.getElementById("clock").textContent =
+    new Date().toISOString().slice(11, 19);
+}, 1000);
+</script>
+</body>
+</html>

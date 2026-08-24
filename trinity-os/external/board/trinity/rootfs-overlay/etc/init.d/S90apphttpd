@@ -1,0 +1,25 @@
+#!/bin/sh
+# Локальный HTTP-сервер приложения киоска (busybox httpd).
+# Нужен, чтобы приложение имело http-origin (fetch к внешним API с file:// не работает).
+
+APP_DIR=/opt/trinity/app
+
+case "$1" in
+  start)
+    printf "Starting app httpd: "
+    httpd -p 127.0.0.1:8080 -h "$APP_DIR"
+    [ $? = 0 ] && echo "OK" || echo "FAIL"
+    ;;
+  stop)
+    printf "Stopping app httpd: "
+    killall httpd 2>/dev/null
+    echo "OK"
+    ;;
+  restart|reload)
+    "$0" stop
+    "$0" start
+    ;;
+  *)
+    echo "Usage: $0 {start|stop|restart}"
+    exit 1
+esac
