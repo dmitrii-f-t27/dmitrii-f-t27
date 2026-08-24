@@ -1,0 +1,108 @@
+// SPDX-License-Identifier: Apache-2.0
+// trinityos/specs/os/dev_net.t27 — устройство NET: мост данных
+//
+// Гость НЕ разговаривает с интернетом. Он просит устройство: «дай записи
+// топика T с параметрами P в мой буфер». TLS/DNS/HTTP живут в мосте-носителе
+// (эмулятор Workbench / softcore на FPGA) — как в реальных системах модем
+// прячет радиотракт. Единая точка аудита всего внешнего трафика.
+// φ² + 1/φ² = 3 | TRINITY
+
+module os-dev-net;
+
+use tritype-base::usize;
+use os-mmio-map::MMIO_BASE_WORD;
+use os-mmio-map::NET_BLOCK_OFF;
+
+// ============================================================================
+// Регистры (смещения в словах от начала блока NET)
+// ============================================================================
+
+/// Дверной звонок (WO): запись 1 запускает запрос
+pub const R_DOORBELL : usize = 0;
+/// Статус (RO): см. ST_*
+pub const R_STATUS : usize = 1;
+/// Топик запроса (RW): см. TOPIC_*
+pub const R_TOPIC : usize = 2;
+/// Параметры запроса (RW): 4 слова, семантика зависит от топика
+pub const R_PARAM0 : usize = 3;
+pub const R_PARAM1 : usize = 4;
+pub const R_PARAM2 : usize = 5;
+pub const R_PARAM3 : usize = 6;
+/// Адрес буфера результата в ОЗУ гостя (RW, в словах)
+pub const R_DST_WORD : usize = 7;
+/// Ёмкость буфера (RW, в словах)
+pub const R_DST_CAP_WORDS : usize = 8;
+/// Число записей результата (RO)
+pub const R_COUNT : usize = 9;
+/// Монотонный номер выполненного запроса (RO)
+pub const R_SEQ : usize = 10;
+
+/// Статусы
+pub const ST_IDLE : usize = 0;
+pub const ST_BUSY : usize = 1;
+pub const ST_READY : usize = 2;
+pub const ST_ERROR : usize = 3;
+
+/// Топики M0
+pub const TOPIC_QUAKES : usize = 1;   // PARAM0 = min_mag_x10, PARAM1 = max_age_min
+pub const TOPIC_ADSB : usize = 2;     // PARAM0..3 = bbox: lat_min_e2, lat_max_e2,
+                                      //             lon_min_e2, lon_max_e2 (i32)
+
+// ============================================================================
+// Форматы записей результата — всегда 4 слова (16 байт) на запись
+// ============================================================================
+
+/// TOPIC_QUAKES: землетрясение
+///   w0 = lat_e4 (i32, градусы * 10^4)
+///   w1 = lon_e4 (i32)
+///   w2 = mag_x10 (u16) | depth_km (u16) << 16
+///   w3 = age_min (u16) | flags (u16) << 16
+pub const QuakeRec = struct {
+    lat_e4 : i32,
+    lon_e4 : i32,
+    mag_x10 : u16,
+    depth_km : u16,
+    age_min : u16,
+    flags : u16,
+};
+
+/// TOPIC_ADSB: борт
+///   w0 = lat_e4 (i32)
+///   w1 = lon_e4 (i32)
+///   w2 = alt_m (u16) | hdg_deg (u16) << 16
+///   w3 = id_hash (u32)
+pub const AdsbRec = struct {
+    lat_e4 : i32,
+    lon_e4 : i32,
+    alt_m : u16,
+    hdg_deg : u16,
+    id_hash : u32,
+};
+
+// ============================================================================
+// Семантика
+// ============================================================================
+
+/// Запрос гостя: заполнить TOPIC/PARAM*/DST*, записать DOORBELL=1
+fn net_request() -> void {
+    // Implementation: STATUS := BUSY; мост получает записи топика,
+    // пишет не более DST_CAP_WORDS/4 записей в ОЗУ по DST_WORD,
+    // COUNT := записано, SEQ += 1, STATUS := READY (или ERROR).
+    // Излишек молча усечён: COUNT — истина.
+}
+
+// ============================================================================
+// Инварианты и голдены
+// ============================================================================
+//
+// INVARIANT N1: устройство пишет в ОЗУ только внутри [DST_WORD, DST_WORD+CAP).
+// INVARIANT N2: DOORBELL при STATUS=BUSY — no-op (запрос не ставится в очередь).
+// INVARIANT N3: смена STATUS BUSY→READY происходит после последней записи
+//              в ОЗУ (гость, увидев READY, читает согласованные данные).
+// INVARIANT N4: DST_WORD+CAP не смеет пересекать MMIO_BASE_WORD — иначе ERROR.
+//
+// GOLDEN G-NET-1 (канонический мост Workbench, датасет "golden-3"):
+//   TOPIC=QUAKES, PARAM0=50 (маг>=5.0), DST_CAP=12 слов → COUNT=3, STATUS=READY,
+//   первая запись: lat_e4=352476, lon_e4=1391026, mag_x10=61.
+// GOLDEN G-NET-2: тот же запрос с DST_CAP=8 → COUNT=2 (усечение), STATUS=READY.
+// GOLDEN G-NET-3: TOPIC=99 (неизвестный) → COUNT=0, STATUS=ERROR.

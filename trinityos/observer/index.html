@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>TrinityOS Observer</title>
+<style>
+  :root { --fg: #7fff9f; --bg: #050805; --dim: #2a4a33; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg);
+    font: 13px/1.5 ui-monospace, monospace; }
+  #wrap { display: flex; flex-direction: column; height: 100%; }
+  header { padding: 8px 14px; border-bottom: 1px solid var(--dim);
+    display: flex; gap: 18px; align-items: center; flex-wrap: wrap; }
+  header b { letter-spacing: 2px; }
+  #stage { position: relative; flex: 1; min-height: 0;
+    display: flex; align-items: center; justify-content: center; }
+  canvas#screen { max-width: 96%; max-height: 96%; aspect-ratio: 2 / 1;
+    background: #000; box-shadow: 0 0 40px rgba(127,255,159,.15);
+    border: 1px solid var(--dim); }
+  #crt { position: absolute; inset: 0; pointer-events: none;
+    background: repeating-linear-gradient(0deg, rgba(0,0,0,.18) 0 1px, transparent 1px 3px); }
+  footer { padding: 8px 14px; border-top: 1px solid var(--dim);
+    display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+  button { background: none; border: 1px solid var(--fg); color: var(--fg);
+    font: inherit; padding: 2px 12px; cursor: pointer; }
+  button:hover { background: var(--dim); }
+  input[type=range] { width: 220px; accent-color: var(--fg); }
+  label.layer { cursor: pointer; user-select: none; opacity: .9; }
+  #pal { display: flex; gap: 2px; }
+  #pal i { width: 10px; height: 10px; display: inline-block; border: 1px solid #222; }
+  #hint { color: #b8ffcb; opacity: .8; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <header>
+    <b>TRINITY OS // OBSERVER</b>
+    <span id="status">кадров: 0</span>
+    <span id="pal" title="тернарная палитра: 27 цветов, индекс = 3 трита (r,g,b)"></span>
+    <span id="hint">нет frames.js? перетащите сюда build/frames.json</span>
+  </header>
+  <div id="stage"><canvas id="screen" width="1458" height="729"></canvas><div id="crt"></div></div>
+  <footer>
+    <button id="play">▶</button>
+    <input type="range" id="seek" min="0" max="0" value="0">
+    <span id="fno">—</span>
+    <span id="layers"></span>
+  </footer>
+</div>
+
+<script src="frames.js" onerror="void 0"></script>
+<script>
+"use strict";
+const W = 1458, H = 729, LAYERS = 27;
+
+// Тернарная палитра: idx = (r+1)*9 + (g+1)*3 + (b+1), канал {-1,0,+1} → {0,128,255}
+function palette(idx) {
+  const lv = t => [0, 128, 255][t];
+  const r = Math.floor(idx / 9), g = Math.floor(idx / 3) % 3, b = idx % 3;
+  return `rgb(${lv(r)},${lv(g)},${lv(b)})`;
+}
+document.getElementById("pal").innerHTML =
+  Array.from({length: LAYERS}, (_, i) => `<i style="background:${palette(i)}"></i>`).join("");
+
+// 27 персистентных слоёв + курсоры MOVE_TO/LINE_TO (переживают кадры — спека D/G-DISP-3)
+const layerCv = Array.from({length: LAYERS}, () => {
+  const c = document.createElement("canvas"); c.width = W; c.height = H; return c;
+});
+let cursors, layerMask, userMask = (1 << LAYERS) - 1 | 0;
+
+function resetState() {
+  layerCv.forEach(c => c.getContext("2d").clearRect(0, 0, W, H));
+  cursors = Array.from({length: LAYERS}, () => [0, 0]);
+  layerMask = 0x07FFFFFF;
+}
+
+function applyFrame(f) {
+  layerMask = f.mask;
+  for (const [op, layer, color, size, x, y] of f.cmds) {
+    const ctx = layerCv[layer].getContext("2d");
+    ctx.fillStyle = ctx.strokeStyle = palette(color);
+    switch (op) {
+      case 1: ctx.clearRect(0, 0, W, H); break;                       // CLEAR
+      case 2:                                                          // POINT
+        ctx.beginPath();
+        ctx.arc(x, y, Math.max(size / 2, 1), 0, Math.PI * 2);
+        ctx.fill();
+        break;
+      case 3: cursors[layer] = [x, y]; break;                          // MOVE_TO
+      case 4:                                                          // LINE_TO
+        ctx.lineWidth = Math.max(size, 1);
+        ctx.beginPath();
+        ctx.moveTo(cursors[layer][0], cursors[layer][1]);
+        ctx.lineTo(x, y);
+        ctx.stroke();
+        cursors[layer] = [x, y];
+        break;
+      case 5:                                                          // GLYPH
+        ctx.font = "16px ui-monospace, monospace";
+        ctx.fillText(String.fromCharCode(size), x, y);
+        break;
+    }
+  }
+}
+
+const screen = document.getElementById("screen").getContext("2d");
+function composite() {
+  screen.clearRect(0, 0, W, H);
+  for (let i = 0; i < LAYERS; i++)
+    if ((layerMask >> i & 1) && (userMask >> i & 1)) screen.drawImage(layerCv[i], 0, 0);
+}
+
+let frames = [], cur = 0, playing = false;
+const seek = document.getElementById("seek");
+
+function showFrame(k) {           // реплей 0..k: слои и курсоры персистентны
+  cur = k;
+  resetState();
+  for (let i = 0; i <= k && i < frames.length; i++) applyFrame(frames[i]);
+  composite();
+  seek.value = k;
+  document.getElementById("fno").textContent =
+    frames.length ? `кадр ${frames[k].frame}/${frames.length}` : "—";
+}
+
+function buildLayerToggles() {
+  const used = new Set();
+  frames.forEach(f => f.cmds.forEach(c => used.add(c[1])));
+  document.getElementById("layers").innerHTML = [...used].sort((a, b) => a - b).map(i =>
+    `<label class="layer"><input type="checkbox" checked data-l="${i}"> L${i}</label>`).join(" ");
+  document.querySelectorAll("#layers input").forEach(cb => cb.onchange = () => {
+    userMask ^= (1 << +cb.dataset.l);
+    showFrame(cur);
+  });
+}
+
+function loadFrames(arr) {
+  frames = arr;
+  seek.max = Math.max(frames.length - 1, 0);
+  document.getElementById("status").textContent = `кадров: ${frames.length}`;
+  document.getElementById("hint").style.display = frames.length ? "none" : "";
+  buildLayerToggles();
+  showFrame(0);
+}
+
+document.getElementById("play").onclick = () => {
+  playing = !playing;
+  document.getElementById("play").textContent = playing ? "⏸" : "▶";
+};
+seek.oninput = () => { playing = false; showFrame(+seek.value); };
+setInterval(() => {
+  if (playing && frames.length) showFrame((cur + 1) % frames.length);
+}, 500);
+
+// drag&drop build/frames.json
+addEventListener("dragover", e => e.preventDefault());
+addEventListener("drop", e => {
+  e.preventDefault();
+  const f = e.dataTransfer.files[0];
+  if (f) f.text().then(t => loadFrames(JSON.parse(t)));
+});
+
+if (window.TRINITY_FRAMES) loadFrames(window.TRINITY_FRAMES);
+</script>
+</body>
+</html>

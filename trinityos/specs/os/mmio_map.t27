@@ -1,0 +1,79 @@
+// SPDX-License-Identifier: Apache-2.0
+// trinityos/specs/os/mmio_map.t27 — TrinityOS Ring 0.5: карта MMIO-пространства
+// Единственный источник истины для адресов всех устройств.
+// φ² + 1/φ² = 3 | TRINITY
+
+module os-mmio-map;
+
+use tritype-base::usize;
+
+// ============================================================================
+// Адресный план
+// ============================================================================
+//
+// Память TRI-27: 3^9 = 19683 слова по 32 бита (78 732 байта, байт-адресация,
+// little-endian, как в trinity/src/tri27/emu/executor.zig).
+//
+// Верхние 3^7 = 2187 слов — окно MMIO. Каждое устройство получает блок
+// 3^5 = 243 слова; хвост окна — кольцевой буфер дисплей-листа.
+//
+//   слова      0 .. 17495   ОЗУ гостя (код, данные, стек)
+//   слова  17496 .. 19682   MMIO (это окно)
+//
+//   17496 +   0 .. 242      CLK   (os-dev-clk)
+//   17496 + 243 .. 485      INP   (os-dev-inp)
+//   17496 + 486 .. 728      NET   (os-dev-net)
+//   17496 + 729 .. 971      DISP  регистры (os-dev-disp)
+//   17496 + 972 .. 2186     DISP  кольцо дисплей-листа (1215 слов = 607 команд)
+
+/// Размер памяти в словах: 3^9
+pub const MEMORY_SIZE_WORDS : usize = 19683;
+
+/// База MMIO-окна (в словах): 19683 - 2187
+pub const MMIO_BASE_WORD : usize = 17496;
+
+/// База MMIO-окна (в байтах): MMIO_BASE_WORD * 4
+pub const MMIO_BASE_BYTE : usize = 69984;
+
+/// Размер блока одного устройства (в словах): 3^5
+pub const DEV_BLOCK_WORDS : usize = 243;
+
+/// Смещения блоков устройств от MMIO_BASE_WORD (в словах)
+pub const CLK_BLOCK_OFF : usize = 0;
+pub const INP_BLOCK_OFF : usize = 243;
+pub const NET_BLOCK_OFF : usize = 486;
+pub const DISP_REG_OFF : usize = 729;
+pub const DISP_RING_OFF : usize = 972;
+
+/// Длина кольца дисплей-листа (в словах): 5 * 3^5
+pub const DISP_RING_WORDS : usize = 1215;
+
+// ============================================================================
+// Функции
+// ============================================================================
+
+/// Попадает ли словесный адрес в MMIO-окно
+fn is_mmio_word(word_addr: u32) -> bool {
+    // Implementation: word_addr >= MMIO_BASE_WORD && word_addr < MEMORY_SIZE_WORDS
+}
+
+/// Попадает ли байтовый адрес (LOAD/STORE executor'а) в MMIO-окно
+fn is_mmio_byte(byte_addr: u32) -> bool {
+    // Implementation: byte_addr >= MMIO_BASE_BYTE
+}
+
+// ============================================================================
+// Инварианты
+// ============================================================================
+//
+// INVARIANT M1: блоки устройств не пересекаются и покрывают окно без дыр:
+//              CLK ∪ INP ∪ NET ∪ DISP_REG ∪ DISP_RING = [17496, 19683).
+// INVARIANT M2: 4*DEV_BLOCK_WORDS + DISP_RING_WORDS = 2187 = 3^7.
+// INVARIANT M3: обычное ОЗУ гостя заканчивается на MMIO_BASE_WORD; загрузчик
+//              обязан отвергать образы, чьи сегменты заходят в окно.
+// INVARIANT M4: доступ в MMIO только словами по выровненным адресам
+//              (byte_addr % 4 == 0); невыровненный доступ — fault устройства.
+//
+// GOLDEN G-MAP-1: is_mmio_word(17495) = false; is_mmio_word(17496) = true;
+//                 is_mmio_word(19682) = true.
+// GOLDEN G-MAP-2: is_mmio_byte(69980) = false; is_mmio_byte(69984) = true.
