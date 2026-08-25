@@ -99,7 +99,8 @@ fn net_request() -> void {
 // INVARIANT N2: DOORBELL при STATUS=BUSY — no-op (запрос не ставится в очередь).
 // INVARIANT N3: смена STATUS BUSY→READY происходит после последней записи
 //              в ОЗУ (гость, увидев READY, читает согласованные данные).
-// INVARIANT N4: DST_WORD+CAP не смеет пересекать MMIO_BASE_WORD — иначе ERROR.
+// INVARIANT N4: буфер [DST_WORD, DST_WORD+CAP) не смеет пересекать
+//              MMIO-окно [MMIO_BASE_WORD, MMIO_END_WORD) — иначе ERROR.
 //
 // GOLDEN G-NET-1 (канонический мост Workbench, датасет "golden-3"):
 //   TOPIC=QUAKES, PARAM0=50 (маг>=5.0), DST_CAP=12 слов → COUNT=3, STATUS=READY,

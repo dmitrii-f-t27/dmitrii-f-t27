@@ -10,7 +10,10 @@ const std = @import("std");
 // ---- os-mmio-map -----------------------------------------------------------
 
 pub const MEMORY_SIZE_WORDS: u32 = 19683; // 3^9
-pub const MMIO_BASE_WORD: u32 = 17496; // 19683 - 3^7
+// ADR-M1: immediate LD/ST — 15 бит со знаком, адресуемы слова 0..16383,
+// поэтому окно сидит на 2*3^8, а не в верху памяти (см. specs/os/mmio_map.t27)
+pub const MMIO_BASE_WORD: u32 = 13122; // 2 * 3^8
+pub const MMIO_END_WORD: u32 = 15309; // 13122 + 3^7
 pub const MMIO_BASE_BYTE: u32 = MMIO_BASE_WORD * 4;
 pub const DEV_BLOCK_WORDS: u32 = 243; // 3^5
 
@@ -22,11 +25,11 @@ pub const DISP_RING_BASE: u32 = MMIO_BASE_WORD + 972;
 pub const DISP_RING_WORDS: u32 = 1215; // 5 * 3^5
 
 pub fn isMmioWord(word_addr: u32) bool {
-    return word_addr >= MMIO_BASE_WORD and word_addr < MEMORY_SIZE_WORDS;
+    return word_addr >= MMIO_BASE_WORD and word_addr < MMIO_END_WORD;
 }
 
 pub fn isMmioByte(byte_addr: u32) bool {
-    return byte_addr >= MMIO_BASE_BYTE;
+    return byte_addr >= MMIO_BASE_BYTE and byte_addr < MMIO_END_WORD * 4;
 }
 
 // ---- os-dev-clk ------------------------------------------------------------
@@ -159,6 +162,9 @@ pub const Mmio = struct {
     disp_ring: [DISP_RING_WORDS]u32 = @splat(0),
     frame: Frame = .{ .frame_id = 0, .layer_mask = 0, .count = 0, .cmds = undefined },
     frame_ready: bool = false,
+    /// Носитель может подписаться на каждый COMMIT (раннер собирает все кадры)
+    on_frame: ?*const fn (ctx: ?*anyopaque, frame: *const Frame) void = null,
+    on_frame_ctx: ?*anyopaque = null,
 
     // -- гостевые обращения (из LOAD/STORE executor'а) -----------------------
 
@@ -281,7 +287,9 @@ pub const Mmio = struct {
 
         const cap_recs = self.net_dst_cap_words / 4;
         // N4: буфер не смеет пересекать MMIO-окно
-        if (self.net_dst_word + self.net_dst_cap_words > MMIO_BASE_WORD) {
+        if (self.net_dst_word < MMIO_END_WORD and
+            self.net_dst_word + self.net_dst_cap_words > MMIO_BASE_WORD)
+        {
             self.net_seq +%= 1;
             self.net_status = NET_ST_ERROR;
             return;
@@ -341,6 +349,7 @@ pub const Mmio = struct {
         self.frame.layer_mask = self.disp_layer_mask;
         self.frame.count = count;
         self.frame_ready = true;
+        if (self.on_frame) |cb| cb(self.on_frame_ctx, &self.frame);
     }
 
     /// Носитель забирает последний защёлкнутый кадр (обсервер/рендер).
@@ -406,7 +415,7 @@ pub fn goldenBackend(topic: u32, params: [4]u32, seq: u32, out: []Rec4) ?u32 {
             for (GOLDEN_ADSB) |a| {
                 if (n >= out.len) break;
                 // детерминированный дрейф по долготе от seq — «живые» борта
-                const drift: i32 = @as(i32, @intCast(seq % 97)) * 900;
+                const drift: i32 = @as(i32, @intCast(seq % 97)) * 27000;
                 var lon = a.lon_e4 + drift;
                 if (lon > 1800000) lon -= 3600000;
                 out[n] = .{
@@ -428,11 +437,14 @@ pub fn goldenBackend(topic: u32, params: [4]u32, seq: u32, out: []Rec4) ?u32 {
 const expectEqual = std.testing.expectEqual;
 
 test "G-MAP-1/2: границы MMIO-окна" {
-    try expectEqual(false, isMmioWord(17495));
-    try expectEqual(true, isMmioWord(17496));
-    try expectEqual(true, isMmioWord(19682));
-    try expectEqual(false, isMmioByte(69980));
-    try expectEqual(true, isMmioByte(69984));
+    try expectEqual(false, isMmioWord(13121));
+    try expectEqual(true, isMmioWord(13122));
+    try expectEqual(true, isMmioWord(15308));
+    try expectEqual(false, isMmioWord(15309));
+    try expectEqual(false, isMmioByte(52484));
+    try expectEqual(true, isMmioByte(52488));
+    // M5: окно целиком в досягаемости 15-битного immediate LD/ST
+    try expectEqual(true, MMIO_END_WORD - 1 <= 16383);
 }
 
 test "G-CLK-1/2: чтение времени, запись — no-op" {

@@ -1,0 +1,83 @@
+diff --git a/src/tri27/emu/executor.zig b/src/tri27/emu/executor.zig
+index ff661c0..3710000 100644
+--- a/src/tri27/emu/executor.zig
++++ b/src/tri27/emu/executor.zig
+@@ -26,6 +26,25 @@ pub const ExecError = error{
+     Halted,
+ };
+ 
++// ═══════════════════════════════════════════════════════════════════════
++// TRINITYOS MMIO HOOKS (Ring 0.5)
++// LD/ST со словесным индексом в окне [17496, 19683) уходят устройствам
++// вместо памяти. Хуки ставит носитель (trios_runner); null — поведение
++// без изменений. Спека окна: trinityos/specs/os/mmio_map.t27.
++// ═══════════════════════════════════════════════════════════════════════
++// ADR-M1: immediate LD/ST — 15 бит со знаком (см. decode ниже), адресуемы
++// только слова 0..16383, поэтому окно сидит на 2*3^8, а не в верху памяти.
++pub const MMIO_BASE_WORD: usize = 13122; // 2 * 3^8
++pub const MMIO_END_WORD: usize = 15309; // 13122 + 3^7
++
++pub const MmioHooks = struct {
++    ctx: *anyopaque,
++    load: *const fn (ctx: *anyopaque, word_addr: u32) u32,
++    store: *const fn (ctx: *anyopaque, word_addr: u32, value: u32, ram: []u8) void,
++};
++
++pub var mmio_hooks: ?MmioHooks = null;
++
+ // ═════════════════════════════════════════════════════════════════
+ // EXECUTE — Execute a single instruction
+ // ═══════════════════════════════════════════════════════════════════════
+@@ -75,17 +94,25 @@ pub fn execute(cpu: *CPUState, inst: Instruction, memory: []align(8) u8) ExecErr
+ 
+         .ST => {
+             // Store ternary register to memory
+-            const addr = @as(usize, @abs(inst.immediate));
++            // TrinityOS fix: immediate — словесный индекс (×4), как в LD;
++            // прежний код брал его как байтовый адрес вопреки собственному
++            // комментарию "like LD" и делал MMIO-окно недостижимым для ST.
++            const word_idx = @as(usize, @abs(inst.immediate));
+             const value = cpu.t27[inst.dst];
++            const packed_word: u64 = @bitCast(value.trits);
+ 
+-            // Immediate is byte address (like LD), NOT word index
+-            // Writing 4 bytes starting at byte address
++            if (mmio_hooks) |h| {
++                if (word_idx >= MMIO_BASE_WORD and word_idx < MMIO_END_WORD) {
++                    h.store(h.ctx, @intCast(word_idx), @truncate(packed_word), memory);
++                    cpu.pc += 1;
++                    return;
++                }
++            }
++
++            const addr = word_idx * 4;
+             if (addr + 4 > memory.len) {
+                 return ExecError.InvalidMemory;
+             }
+-
+-            // Pack Trit27 into 64-bit word for storage
+-            const packed_word: u64 = @bitCast(value.trits);
+             // Manual word write (little-endian) - write 4 bytes
+             memory[addr] = @as(u8, @truncate(packed_word));
+             memory[addr + 1] = @as(u8, @truncate(packed_word >> 8));
+@@ -104,11 +131,15 @@ pub fn execute(cpu: *CPUState, inst: Instruction, memory: []align(8) u8) ExecErr
+                 return ExecError.InvalidMemory;
+             }
+ 
+-            // Read 4 bytes as little-endian word
+-            const word: u32 = memory[byte_addr] |
+-                @as(u32, memory[byte_addr + 1]) << 8 |
+-                @as(u32, memory[byte_addr + 2]) << 16 |
+-                @as(u32, memory[byte_addr + 3]) << 24;
++            // TrinityOS: словесный индекс в MMIO-окне читает устройство
++            const word: u32 = if (mmio_hooks != null and
++                addr >= MMIO_BASE_WORD and addr < MMIO_END_WORD)
++                mmio_hooks.?.load(mmio_hooks.?.ctx, @intCast(addr))
++            else
++                memory[byte_addr] |
++                    @as(u32, memory[byte_addr + 1]) << 8 |
++                    @as(u32, memory[byte_addr + 2]) << 16 |
++                    @as(u32, memory[byte_addr + 3]) << 24;
+ 
+             // Convert word to Trit27 (sign-extend 32-bit to 64-bit)
+             const signed_word: i32 = @bitCast(word);
