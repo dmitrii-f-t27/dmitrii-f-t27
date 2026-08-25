@@ -81,9 +81,12 @@ function applyFrame(f) {
     switch (op) {
       case 1: ctx.clearRect(0, 0, W, H); break;                       // CLEAR
       case 2:                                                          // POINT
+        ctx.shadowColor = ctx.fillStyle;
+        ctx.shadowBlur = size * 2.5;
         ctx.beginPath();
         ctx.arc(x, y, Math.max(size / 2, 1), 0, Math.PI * 2);
         ctx.fill();
+        ctx.shadowBlur = 0;
         break;
       case 3: cursors[layer] = [x, y]; break;                          // MOVE_TO
       case 4:                                                          // LINE_TO
@@ -136,7 +139,10 @@ function buildLayerToggles() {
 function loadFrames(arr) {
   frames = arr;
   seek.max = Math.max(frames.length - 1, 0);
-  document.getElementById("status").textContent = `кадров: ${frames.length}`;
+  const meta = window.TRINITY_META;
+  document.getElementById("status").textContent = meta
+    ? `кадров: ${frames.length} · LIVE ${meta.fetched_at} · ${meta.sources.join(" + ")}`
+    : `кадров: ${frames.length}`;
   document.getElementById("hint").style.display = frames.length ? "none" : "";
   buildLayerToggles();
   showFrame(0);

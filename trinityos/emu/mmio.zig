@@ -82,6 +82,9 @@ pub const NET_ST_ERROR: u32 = 3;
 
 pub const TOPIC_QUAKES: u32 = 1;
 pub const TOPIC_ADSB: u32 = 2;
+// M2 (ADR-M2): screen-space записи, движение моделирует мост; PARAM1 = шаг
+pub const TOPIC_ADSB_XY: u32 = 4;
+pub const TOPIC_SATS_XY: u32 = 5;
 
 /// Одна запись результата NET — всегда 4 слова.
 pub const Rec4 = [4]u32;

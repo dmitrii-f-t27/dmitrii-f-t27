@@ -1,0 +1,18 @@
+{
+ "fetched_at": "2026-08-25 13:40 UTC",
+ "unix": 1787665208,
+ "quakes": 32,
+ "quakes_24h_total": 32,
+ "planes": 84,
+ "planes_airborne_total": 7993,
+ "planes_feed_total": 12960,
+ "sats": 157,
+ "sats_catalog": 157,
+ "steps": 9,
+ "step_seconds": 120,
+ "sources": [
+  "USGS 2.5_day",
+  "OpenSky states/all",
+  "CelesTrak visual TLE"
+ ]
+}
