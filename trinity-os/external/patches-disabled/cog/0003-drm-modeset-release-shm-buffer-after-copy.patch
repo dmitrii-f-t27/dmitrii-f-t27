@@ -1,0 +1,35 @@
+drm/modeset: отпускать SHM-буфер сразу после копирования
+
+Рендерер копирует содержимое клиентского wl_shm-буфера в собственный
+gbm_bo, но экспортированный буфер держал до вытеснения следующим кадром
+(или до destroy). При интенсивном чурне пулов (WebKit пересоздаёт пулы
+при росте страницы, мигании курсора и т.п.) клиент успевает уничтожить
+буфер раньше, и отложенный dispatch_release постит wl_buffer.release в
+освобождённый ресурс — segfault в wl_resource_post_event. После копии
+буфер нам не нужен: отпускаем его немедленно, а хвостовые release в
+destroy_buffer больше не срабатывают (export.shm_buffer не заполняется).
+Бонус: внешние ссылки на пул снимаются раньше, окно отложенного resize
+сжимается.
+
+Signed-off-by: Trinity OS build <dmitrii.f@t27.ai>
+
+--- a/platform/drm/cog-drm-modeset-renderer.c
++++ b/platform/drm/cog-drm-modeset-renderer.c
+@@ -534,7 +534,7 @@
+     if (buffer) {
+         drm_copy_shm_buffer_into_bo(exported_shm_buffer, buffer->bo);
+ 
+-        buffer->export.shm_buffer = exported_buffer;
++        wpe_view_backend_exportable_fdo_dispatch_release_shm_exported_buffer(self->exportable, exported_buffer);
+         drm_commit_buffer(self, buffer);
+         return;
+     }
+@@ -543,7 +543,7 @@
+     if (buffer) {
+         drm_copy_shm_buffer_into_bo(exported_shm_buffer, buffer->bo);
+ 
+-        buffer->export.shm_buffer = exported_buffer;
++        wpe_view_backend_exportable_fdo_dispatch_release_shm_exported_buffer(self->exportable, exported_buffer);
+         drm_commit_buffer(self, buffer);
+     }
+ }

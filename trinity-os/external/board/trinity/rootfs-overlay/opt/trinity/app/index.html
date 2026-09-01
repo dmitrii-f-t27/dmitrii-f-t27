@@ -2,110 +2,100 @@
 <html lang="ru">
 <head>
 <meta charset="utf-8">
-<title>Trinity OS — Worldview Lite</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<script src="https://cdn.jsdelivr.net/npm/cesium@1.119/Build/Cesium/Cesium.js"></script>
-<link href="https://cdn.jsdelivr.net/npm/cesium@1.119/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
+<title>Trinity OS</title>
 <style>
-  html, body, #globe { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; overflow: hidden; }
-  .hud {
-    position: fixed; z-index: 10; color: #7fff9f; font: 12px/1.6 monospace;
-    text-shadow: 0 0 6px rgba(127,255,159,.7); pointer-events: none;
-  }
-  #hud-tl { top: 12px; left: 14px; }
-  #hud-br { right: 14px; bottom: 10px; text-align: right; }
-  /* CRT-развёртка — привет видео Bilawal'а */
-  #crt {
-    position: fixed; inset: 0; z-index: 9; pointer-events: none;
-    background: repeating-linear-gradient(0deg, rgba(0,0,0,.16) 0 1px, transparent 1px 3px);
-    mix-blend-mode: multiply;
-  }
-  .cesium-viewer-bottom { display: none; } /* убираем логотипы с киоска */
+  /* Рабочий стол Trinity OS. Только плоские цвета — рендер на kms_swrast. */
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { height:100%; }
+  body { display:flex; flex-direction:column; background:#0b0f0c; color:#c8e6c9;
+         font:14px "DejaVu Sans", sans-serif; overflow:hidden; }
+
+  #wall { flex:1; display:flex; flex-direction:column; align-items:center;
+          justify-content:center; gap:34px; position:relative; }
+
+  /* фирменный знак: треугольник (троичность) */
+  #brand { display:flex; flex-direction:column; align-items:center; gap:10px; }
+  #brand svg { display:block; }
+  #brand .word { color:#4caf50; font-size:34px; letter-spacing:14px;
+                 font-weight:bold; padding-left:14px; }
+  #brand .sub  { color:#2e4d31; font-size:13px; letter-spacing:4px; padding-left:4px; }
+
+  #clock { color:#7cb07f; font-size:20px; letter-spacing:2px; }
+
+  /* сетка иконок */
+  #icons { display:flex; gap:36px; }
+  .app { display:flex; flex-direction:column; align-items:center; gap:10px;
+         width:126px; padding:18px 8px 12px; background:transparent;
+         border:1px solid transparent; cursor:pointer; color:#c8e6c9; font:inherit; }
+  .app:focus { outline:none; border-color:#4caf50; background:#101812; }
+  .app:active { background:#162418; }
+  .app .tile { width:72px; height:72px; display:flex; align-items:center;
+               justify-content:center; background:#101812; border:1px solid #2e4d31; }
+  .app:focus .tile { border-color:#4caf50; }
+  .app .label { font-size:14px; }
+  .app .hint  { font-size:11px; color:#2e4d31; }
+
+  #bar { display:flex; align-items:center; gap:16px; padding:5px 10px;
+         background:#101812; border-top:1px solid #1e3320; color:#7cb07f; font-size:12px; }
+  #bar .grow { flex:1; }
+  #bar .brand { color:#4caf50; font-weight:bold; letter-spacing:1px; }
 </style>
 </head>
 <body>
-<div id="globe"></div>
-<div id="crt"></div>
-<div class="hud" id="hud-tl">
-  TRINITY OS // L0 KIOSK<br>
-  <span id="st-planes">ADS-B: —</span><br>
-  <span id="st-quakes">SEISMIC: —</span>
-</div>
-<div class="hud" id="hud-br"><span id="clock">--:--:--</span> UTC</div>
+  <div id="wall">
+    <div id="brand">
+      <svg width="96" height="84" viewBox="0 0 96 84" xmlns="http://www.w3.org/2000/svg">
+        <polygon points="48,4 92,80 4,80" fill="none" stroke="#4caf50" stroke-width="3"/>
+        <polygon points="48,28 74,72 22,72" fill="none" stroke="#2e4d31" stroke-width="2"/>
+        <circle cx="48" cy="56" r="5" fill="#4caf50"/>
+      </svg>
+      <div class="word">TRINITY</div>
+      <div class="sub">φ² + 1/φ² = 3</div>
+    </div>
+
+    <div id="clock">--:--</div>
+
+    <div id="icons">
+      <button class="app" id="appBrowser" autofocus>
+        <span class="tile">
+          <svg width="44" height="44" viewBox="0 0 44 44" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="22" cy="22" r="18" fill="none" stroke="#4caf50" stroke-width="2.5"/>
+            <ellipse cx="22" cy="22" rx="8" ry="18" fill="none" stroke="#4caf50" stroke-width="1.5"/>
+            <line x1="4" y1="22" x2="40" y2="22" stroke="#4caf50" stroke-width="1.5"/>
+            <polygon points="22,13 29,31 15,31" fill="none" stroke="#7cb07f" stroke-width="1.5"/>
+          </svg>
+        </span>
+        <span class="label">Браузер</span>
+        <span class="hint">Enter — открыть</span>
+      </button>
+    </div>
+  </div>
+
+  <div id="bar">
+    <span class="brand">TRINITY OS</span>
+    <span>L0 · web kiosk</span>
+    <span class="grow"></span>
+    <span>Ctrl+Alt+F2 — консоль</span>
+    <span id="barclock"></span>
+  </div>
 
 <script>
-"use strict";
+  function openBrowser() { window.location.href = "browser.html"; }
+  var b = document.getElementById("appBrowser");
+  b.addEventListener("click", openBrowser);
+  window.addEventListener("keydown", function (e) {
+    if (e.key === "Enter" || e.keyCode === 13 || e.key === " ") openBrowser();
+  });
 
-const viewer = new Cesium.Viewer("globe", {
-  baseLayer: new Cesium.ImageryLayer(new Cesium.OpenStreetMapImageryProvider({
-    url: "https://tile.openstreetmap.org/",
-  })),
-  baseLayerPicker: false, geocoder: false, homeButton: false, timeline: false,
-  animation: false, sceneModePicker: false, navigationHelpButton: false,
-  fullscreenButton: false, selectionIndicator: false, infoBox: false,
-  requestRenderMode: false,
-});
-viewer.scene.globe.enableLighting = true;
-viewer.camera.flyHome(0);
-
-// --- Землетрясения: USGS, обновление раз в 5 минут -------------------------
-const quakes = viewer.scene.primitives.add(new Cesium.PointPrimitiveCollection());
-async function loadQuakes() {
-  try {
-    const r = await fetch("https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_day.geojson");
-    const gj = await r.json();
-    quakes.removeAll();
-    for (const f of gj.features) {
-      const [lon, lat] = f.geometry.coordinates;
-      const mag = f.properties.mag || 0;
-      quakes.add({
-        position: Cesium.Cartesian3.fromDegrees(lon, lat),
-        pixelSize: Math.max(4, mag * 3),
-        color: Cesium.Color.RED.withAlpha(0.85),
-        outlineColor: Cesium.Color.YELLOW.withAlpha(0.6),
-        outlineWidth: 1,
-      });
-    }
-    document.getElementById("st-quakes").textContent =
-      `SEISMIC: ${gj.features.length} events / 24h`;
-  } catch (e) {
-    document.getElementById("st-quakes").textContent = "SEISMIC: offline";
+  // Часы обновляются раз в минуту: меньше перерисовок на софт-рендере
+  function two(n){ return (n < 10 ? "0" : "") + n; }
+  function tick() {
+    var d = new Date();
+    var t = two(d.getHours()) + ":" + two(d.getMinutes());
+    document.getElementById("clock").textContent = t;
+    document.getElementById("barclock").textContent = t;
   }
-}
-loadQuakes();
-setInterval(loadQuakes, 5 * 60 * 1000);
-
-// --- Самолёты: OpenSky, обновление раз в 90 секунд (анонимный лимит) -------
-const planes = viewer.scene.primitives.add(new Cesium.PointPrimitiveCollection());
-async function loadPlanes() {
-  try {
-    const r = await fetch("https://opensky-network.org/api/states/all");
-    const data = await r.json();
-    planes.removeAll();
-    let n = 0;
-    for (const s of data.states || []) {
-      const lon = s[5], lat = s[6], alt = s[13] || s[7] || 0;
-      if (lon == null || lat == null) continue;
-      planes.add({
-        position: Cesium.Cartesian3.fromDegrees(lon, lat, Math.max(alt, 0)),
-        pixelSize: 2.5,
-        color: Cesium.Color.CYAN.withAlpha(0.9),
-      });
-      n++;
-    }
-    document.getElementById("st-planes").textContent = `ADS-B: ${n} aircraft live`;
-  } catch (e) {
-    document.getElementById("st-planes").textContent = "ADS-B: offline / rate-limited";
-  }
-}
-loadPlanes();
-setInterval(loadPlanes, 90 * 1000);
-
-// --- Часы -------------------------------------------------------------------
-setInterval(() => {
-  document.getElementById("clock").textContent =
-    new Date().toISOString().slice(11, 19);
-}, 1000);
+  tick(); setInterval(tick, 60000);
 </script>
 </body>
 </html>

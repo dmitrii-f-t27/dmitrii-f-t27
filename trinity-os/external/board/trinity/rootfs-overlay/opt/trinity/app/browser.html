@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Trinity Browser</title>
+<style>
+  /* Плоские цвета, без теней и анимаций: рендер обязан оставаться быстрым на kms_swrast */
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { height:100%; }
+  body { display:flex; flex-direction:column; background:#0b0f0c; color:#c8e6c9;
+         font:14px "DejaVu Sans", sans-serif; }
+  #bar { display:flex; gap:6px; align-items:center; padding:6px 8px; background:#101812;
+         border-bottom:1px solid #1e3320; }
+  #bar .brand { color:#4caf50; font-weight:bold; white-space:nowrap; letter-spacing:1px; }
+  button { background:#162418; color:#c8e6c9; border:1px solid #2e4d31; padding:6px 10px;
+           font:inherit; cursor:pointer; }
+  button:active { background:#2e4d31; }
+  #url { flex:1; background:#0e1510; color:#e8f5e9; border:1px solid #2e4d31;
+         padding:6px 10px; font:inherit; min-width:80px; }
+  #view { flex:1; border:0; width:100%; background:#fff; }
+  #home { flex:1; overflow:auto; padding:28px; display:none; }
+  #status { display:flex; gap:16px; padding:4px 8px; background:#101812; color:#7cb07f;
+            border-top:1px solid #1e3320; font-size:12px; }
+  #status .grow { flex:1; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+  .links { display:flex; gap:8px; margin:14px 0; flex-wrap:wrap; }
+  h1 { color:#4caf50; font-size:22px; margin-bottom:4px; }
+  .sub { color:#7cb07f; margin-bottom:18px; }
+  table { border-collapse:collapse; margin-top:8px; }
+  td { padding:3px 12px 3px 0; vertical-align:top; }
+  td:first-child { color:#7cb07f; white-space:nowrap; }
+  #nethint { margin-top:18px; color:#7cb07f; }
+</style>
+</head>
+<body>
+  <div id="bar">
+    <span class="brand">TRINITY</span>
+    <button id="btnDesk" title="Рабочий стол">◱</button>
+    <button id="btnHome" title="Домой">⌂</button>
+    <button id="btnBack" title="Назад">←</button>
+    <button id="btnFwd" title="Вперёд">→</button>
+    <button id="btnReload" title="Обновить">↻</button>
+    <input id="url" type="text" autofocus spellcheck="false"
+           placeholder="адрес (example.com) или поисковый запрос">
+    <button id="btnGo">Перейти</button>
+  </div>
+
+  <div id="home">
+    <h1>Trinity OS</h1>
+    <div class="sub">L0 · web kiosk · первое приложение: браузер</div>
+    <div class="links">
+      <button data-go="example.com">example.com</button>
+      <button data-go="wpewebkit.org">wpewebkit.org</button>
+      <button data-go="html.duckduckgo.com/html/">DuckDuckGo</button>
+      <button data-go="ip.me">ip.me</button>
+    </div>
+    <table>
+      <tr><td>Движок</td><td id="ua"></td></tr>
+      <tr><td>Экран</td><td id="scr"></td></tr>
+      <tr><td>Время</td><td id="clk2"></td></tr>
+      <tr><td>Сеть</td><td id="net">проверяю…</td></tr>
+    </table>
+    <div id="nethint">Ввод без точки или с пробелами уходит в поиск DuckDuckGo.
+      Сайты, запрещающие показ во фрейме, открывай кнопкой «напрямую» в строке статуса.</div>
+  </div>
+
+  <iframe id="view" src="about:blank"></iframe>
+
+  <div id="status">
+    <span id="cur" class="grow">домашний экран</span>
+    <button id="btnRaw" style="display:none;font-size:12px;padding:2px 8px">напрямую</button>
+    <span id="clk"></span>
+  </div>
+
+<script>
+  var view = document.getElementById('view'),
+      home = document.getElementById('home'),
+      url  = document.getElementById('url'),
+      cur  = document.getElementById('cur'),
+      raw  = document.getElementById('btnRaw');
+  var lastUrl = '';
+
+  function showHome() {
+    view.style.display = 'none'; home.style.display = 'block';
+    cur.textContent = 'домашний экран'; raw.style.display = 'none';
+    url.value = ''; url.focus();
+  }
+  function normalize(q) {
+    q = q.trim();
+    if (!q) return null;
+    if (/\s/.test(q) || q.indexOf('.') < 0)
+      return 'https://html.duckduckgo.com/html/?q=' + encodeURIComponent(q);
+    if (!/^https?:\/\//i.test(q)) q = 'https://' + q;
+    return q;
+  }
+  function go(q) {
+    var u = normalize(q);
+    if (!u) return;
+    lastUrl = u;
+    home.style.display = 'none'; view.style.display = 'block';
+    cur.textContent = u; raw.style.display = 'inline-block';
+    url.value = u;
+    view.src = u;
+  }
+
+  document.getElementById('btnGo').onclick   = function(){ go(url.value); };
+  document.getElementById('btnDesk').onclick = function(){ window.location.href = 'index.html'; };
+  document.getElementById('btnHome').onclick = showHome;
+  document.getElementById('btnBack').onclick = function(){ history.back(); };
+  document.getElementById('btnFwd').onclick  = function(){ history.forward(); };
+  document.getElementById('btnReload').onclick = function(){
+    if (view.style.display !== 'none') view.src = view.src;
+  };
+  raw.onclick = function(){ if (lastUrl) window.location.href = lastUrl; };
+  url.addEventListener('keydown', function(e){
+    if (e.key === 'Enter' || e.keyCode === 13) go(url.value);
+  });
+  Array.prototype.forEach.call(document.querySelectorAll('[data-go]'), function(b){
+    b.onclick = function(){ go(b.getAttribute('data-go')); };
+  });
+
+  document.getElementById('ua').textContent  = navigator.userAgent;
+  document.getElementById('scr').textContent = screen.width + '×' + screen.height;
+  function tick() {
+    var t = new Date().toTimeString().slice(0,8);
+    document.getElementById('clk').textContent  = t;
+    document.getElementById('clk2').textContent = new Date().toString();
+  }
+  tick(); setInterval(tick, 1000);
+
+  // Проверка сети: no-cors fetch — успех значит DNS+TCP+TLS работают
+  fetch('https://example.com/', {mode:'no-cors'}).then(function(){
+    document.getElementById('net').textContent = 'есть выход в интернет';
+  }).catch(function(){
+    document.getElementById('net').textContent = 'нет соединения (или ещё нет времени/TLS)';
+  });
+
+  showHome();
+</script>
+</body>
+</html>

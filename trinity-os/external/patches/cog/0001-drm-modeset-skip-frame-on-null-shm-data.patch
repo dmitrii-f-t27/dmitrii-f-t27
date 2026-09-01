@@ -1,0 +1,26 @@
+drm/modeset: пропускать кадр, если wl_shm_buffer_get_data вернул NULL
+
+Начиная с wayland 1.24 сервер откладывает resize shm-пула, пока на пул
+держится внешняя ссылка; в этом окне wl_shm_buffer_get_data() возвращает
+NULL («Buffer address requested when its parent pool has an external
+reference and a deferred resize pending»). cog копировал из NULL и падал
+по segfault на каждом старте страницы. Кадр в этом окне можно просто
+пропустить — клиент тут же пришлёт следующий буфер из выросшего пула.
+
+Signed-off-by: Trinity OS build <dmitrii.f@t27.ai>
+
+--- a/platform/drm/cog-drm-modeset-renderer.c
++++ b/platform/drm/cog-drm-modeset-renderer.c
+@@ -296,6 +296,12 @@
+     wl_shm_buffer_begin_access(shm_buffer);
+
+     uint8_t *src = wl_shm_buffer_get_data(shm_buffer);
++    if (!src) {
++        /* wayland 1.24+: отложенный resize пула — данных сейчас нет */
++        wl_shm_buffer_end_access(shm_buffer);
++        gbm_bo_unmap(bo, map_data);
++        return;
++    }
+     uint8_t *dst = map_data;
+
+     uint32_t bo_width = gbm_bo_get_width(bo);

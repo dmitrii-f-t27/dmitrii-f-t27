@@ -1,0 +1,22 @@
+egl/dri2: не падать в eglBindWaylandDisplayWL без имени DRM-устройства
+
+У софтверных устройств (kms_swrast/llvmpipe) и у virtio-gpu без 3D
+dri2_dpy->device_name == NULL, и strdup(NULL) роняет процесс в libc.
+Строкой ниже NULL уже обрабатывается как штатный отказ (goto fail) —
+добавляем ту же проверку на аргумент strdup. Расширение
+EGL_WL_bind_wayland_display в этом случае честно возвращает EGL_FALSE,
+а клиент (wpebackend-fdo) живёт дальше по dmabuf/SHM-пути.
+
+Signed-off-by: Trinity OS build <dmitrii.f@t27.ai>
+
+--- a/src/egl/drivers/dri2/egl_dri2.c
++++ b/src/egl/drivers/dri2/egl_dri2.c
+@@ -2695,7 +2695,7 @@
+       goto fail;
+
+    device_name = drmGetRenderDeviceNameFromFd(dri2_dpy->fd_render_gpu);
+-   if (!device_name)
++   if (!device_name && dri2_dpy->device_name)
+       device_name = strdup(dri2_dpy->device_name);
+    if (!device_name)
+       goto fail;

@@ -1,0 +1,31 @@
+drm/modeset: перепроверять wl_shm_buffer по живому ресурсу при экспорте
+
+Указатель shm_buffer, который backend кэширует при attach, к моменту
+экспорта может протухнуть (наблюдались стабильные мусорные структуры).
+Единственный надёжный источник — сам wl_resource в момент экспорта:
+берём wl_shm_buffer_get(resource) заново; если ресурс отсутствует или
+не является shm-буфером, отпускаем экспорт и продолжаем кадры.
+
+Signed-off-by: Trinity OS build <dmitrii.f@t27.ai>
+
+--- a/platform/drm/cog-drm-modeset-renderer.c
++++ b/platform/drm/cog-drm-modeset-renderer.c
+@@ -545,7 +545,17 @@
+     CogDrmModesetRenderer *self = data;
+ 
+     struct wl_resource   *exported_resource = wpe_fdo_shm_exported_buffer_get_resource(exported_buffer);
+-    struct wl_shm_buffer *exported_shm_buffer = wpe_fdo_shm_exported_buffer_get_shm_buffer(exported_buffer);
++
++    /* Не доверяем указателю, закэшированному backend-ом при attach:
++     * берём wl_shm_buffer заново из живого ресурса. Если ресурс уже не
++     * shm-буфер (или экспорт пришёл без ресурса) — кадр честно пропускаем. */
++    struct wl_shm_buffer *exported_shm_buffer =
++        exported_resource ? wl_shm_buffer_get(exported_resource) : NULL;
++    if (!exported_shm_buffer) {
++        wpe_view_backend_exportable_fdo_dispatch_release_shm_exported_buffer(self->exportable, exported_buffer);
++        wpe_view_backend_exportable_fdo_dispatch_frame_complete(self->exportable);
++        return;
++    }
+ 
+     struct buffer_object *buffer = drm_buffer_for_resource(self, exported_resource);
+     if (buffer) {

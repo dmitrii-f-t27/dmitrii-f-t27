@@ -1,0 +1,73 @@
+ws: отслеживать уничтожение прикреплённого буфера до commit
+
+surfaceAttach кэширует bufferResource/shmBuffer/dmabufBuffer, но клиент
+вправе уничтожить wl_buffer между attach и commit. Кэш продолжал
+указывать на освобождённые объекты, и commit экспортировал компоситору
+висячие указатели: чтение мусора из wl_shm_buffer, случайные SIGSEGV
+в копировании кадра, «ложные» состояния пула. Вешаем на прикреплённый
+буфер destroy-listener, который обнуляет кэш сюрфейса; при повторном
+attach и в деструкторе сюрфейса слушатель снимается.
+
+Signed-off-by: Trinity OS build <dmitrii.f@t27.ai>
+
+--- a/src/ws.h
++++ b/src/ws.h
+@@ -73,6 +73,8 @@
+             wl_resource_destroy(resource);
+         wl_resource_for_each_safe(resource, tmp, &m_currentFrameCallbacks)
+             wl_resource_destroy(resource);
++        if (bufferDestroyListenerArmed)
++            wl_list_remove(&bufferDestroyListener.link);
+     }
+ 
+     struct wl_resource* resource;
+@@ -83,6 +85,11 @@
+     const struct linux_dmabuf_buffer* dmabufBuffer { nullptr };
+     struct wl_shm_buffer* shmBuffer { nullptr };
+ 
++    /* Кэш выше должен обнуляться, если клиент уничтожил прикреплённый
++     * буфер до commit — иначе экспорт уйдёт с висячими указателями. */
++    struct wl_listener bufferDestroyListener { };
++    bool bufferDestroyListenerArmed { false };
++
+     void commit()
+     {
+         wl_list_insert_list(&m_currentFrameCallbacks, &m_pendingFrameCallbacks);
+--- a/src/ws.cpp
++++ b/src/ws.cpp
+@@ -89,6 +89,18 @@
+     nullptr, // closure_marshall
+ };
+ 
++static void surfaceBufferDestroyed(struct wl_listener* listener, void*)
++{
++    Surface* surface;
++    surface = wl_container_of(listener, surface, bufferDestroyListener);
++
++    surface->bufferResource = nullptr;
++    surface->dmabufBuffer = nullptr;
++    surface->shmBuffer = nullptr;
++    wl_list_remove(&surface->bufferDestroyListener.link);
++    surface->bufferDestroyListenerArmed = false;
++}
++
+ static const struct wl_surface_interface s_surfaceInterface = {
+     // destroy
+     [](struct wl_client*, struct wl_resource*) { },
+@@ -96,7 +108,16 @@
+     [](struct wl_client*, struct wl_resource* surfaceResource, struct wl_resource* bufferResource, int32_t, int32_t)
+     {
+         auto& surface = *static_cast<Surface*>(wl_resource_get_user_data(surfaceResource));
++        if (surface.bufferDestroyListenerArmed) {
++            wl_list_remove(&surface.bufferDestroyListener.link);
++            surface.bufferDestroyListenerArmed = false;
++        }
+         Instance::singleton().impl().surfaceAttach(surface, bufferResource);
++        if (bufferResource) {
++            surface.bufferDestroyListener.notify = surfaceBufferDestroyed;
++            wl_resource_add_destroy_listener(bufferResource, &surface.bufferDestroyListener);
++            surface.bufferDestroyListenerArmed = true;
++        }
+     },
+     // damage
+     [](struct wl_client*, struct wl_resource*, int32_t, int32_t, int32_t, int32_t) { },
