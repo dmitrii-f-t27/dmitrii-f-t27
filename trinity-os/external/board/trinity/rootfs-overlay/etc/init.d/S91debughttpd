@@ -1,0 +1,21 @@
+#!/bin/sh
+# Диагностический httpd (только для dev-образов): отдаёт корневую ФС на :8090,
+# чтобы читать /var/log/* с хоста через QEMU hostfwd, не трогая консоль.
+# TODO: перед боевым образом убрать или завести флаг trinity.debug в cmdline.
+
+case "$1" in
+  start)
+    printf "Starting debug httpd (:8090): "
+    httpd -p 8090 -h /
+    echo "OK"
+    ;;
+  stop)
+    killall httpd 2>/dev/null
+    ;;
+  restart|reload)
+    "$0" stop; "$0" start
+    ;;
+  *)
+    echo "Usage: $0 {start|stop|restart}"; exit 1
+    ;;
+esac

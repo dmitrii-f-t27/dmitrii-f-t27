@@ -1,0 +1,23 @@
+drm: помечать WPE-view видимым и сфокусированным
+
+Платформа drm никогда не выставляет activity state у wpe_view_backend.
+WebKit WPE считает такой view несфокусированным и молча отбрасывает
+клавиатурные события в UIProcess — рендер работает, keysym'ы доходят
+до wpe_view_backend_dispatch_keyboard_event, а DOM их не видит.
+В киоске view один и всегда активен: visible | in_window | focused.
+
+Signed-off-by: Trinity OS build <dmitrii.f@t27.ai>
+
+--- a/platform/drm/cog-platform-drm.c
++++ b/platform/drm/cog-platform-drm.c
+@@ -1530,6 +1530,10 @@
+ 
+     wpe_view_data.backend = wpe_view_backend_exportable_fdo_get_view_backend (wpe_host_data.exportable);
+     g_assert (wpe_view_data.backend);
++
++    wpe_view_backend_add_activity_state (wpe_view_data.backend,
++                                         wpe_view_activity_state_visible | wpe_view_activity_state_in_window |
++                                             wpe_view_activity_state_focused);
+ 
+     WebKitWebViewBackend *wk_view_backend =
+         webkit_web_view_backend_new (wpe_view_data.backend,

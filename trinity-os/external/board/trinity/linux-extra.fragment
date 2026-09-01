@@ -13,3 +13,5 @@ CONFIG_KEYBOARD_ATKBD=y
 
 # Сетевые карты современных mini-PC (Intel 2.5G)
 CONFIG_IGC=m
+# Стандартный VGA в QEMU (bochs-display): надёжный путь вывода без virtio-scanout
+CONFIG_DRM_BOCHS=y

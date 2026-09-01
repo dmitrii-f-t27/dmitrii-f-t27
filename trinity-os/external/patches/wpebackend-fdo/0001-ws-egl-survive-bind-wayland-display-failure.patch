@@ -1,0 +1,27 @@
+ws-egl: не прерывать инициализацию, если eglBindWaylandDisplayWL отказал
+
+Mesa честно возвращает EGL_FALSE из eglBindWaylandDisplayWL, когда у
+устройства нет имени DRM-узла (софт-рендер kms_swrast, virtio-gpu без
+virgl). Раньше это валило всю ImplEGL::initialize — сервер не
+регистрировал глобал wpe_bridge, и каждый WPEWebProcess умирал с
+"Failed to bind wpe_bridge". Legacy-протокол wl_drm — лишь один из
+транспортов буферов; без него остаются dmabuf и SHM. Предупреждаем и
+продолжаем.
+
+Signed-off-by: Trinity OS build <dmitrii.f@t27.ai>
+
+--- a/src/ws-egl.cpp
++++ b/src/ws-egl.cpp
+@@ -155,8 +155,10 @@
+         if (!extensions.KHR_image_base)
+             return false;
+
+-        if (!s_eglBindWaylandDisplayWL(eglDisplay, display()))
+-            return false;
++        if (!s_eglBindWaylandDisplayWL(eglDisplay, display())) {
++            g_warning("eglBindWaylandDisplayWL failed; continuing without wl_drm (dmabuf/SHM only)");
++            s_eglQueryWaylandBufferWL = nullptr;
++        }
+     }
+
+     m_initialized = true;

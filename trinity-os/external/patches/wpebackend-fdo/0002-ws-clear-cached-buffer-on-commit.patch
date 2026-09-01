@@ -1,0 +1,43 @@
+ws: согласовать кэш прикреплённого буфера при commit
+
+Клиент вправе прислать damage-only commit без нового attach — тогда
+текущий буфер экспортируется повторно. Раньше bufferResource обнулялся
+при каждом commit, а shmBuffer оставался: повторный commit экспортировал
+осиротевший shm-указатель с NULL-ресурсом (чтение освобождённой памяти
+в компоситоре). Теперь кэш живёт между commit-ами целиком, commit без
+прикреплённого буфера — no-op, а от уничтожения буфера клиентом
+защищает destroy-listener сюрфейса (следующий патч).
+
+Signed-off-by: Trinity OS build <dmitrii.f@t27.ai>
+
+--- a/src/ws-egl.cpp
++++ b/src/ws-egl.cpp
+@@ -99,8 +99,15 @@
+     if (!surface.apiClient)
+         return;
+ 
++    /* Кэш attach-а живёт между commit-ами: клиент вправе прислать
++     * damage-only commit без нового attach, и тогда экспортируется
++     * текущий буфер повторно. Раньше bufferResource обнулялся, а
++     * shmBuffer — нет: повторный commit экспортировал осиротевший
++     * shm-указатель с NULL-ресурсом. Теперь состояние согласовано,
++     * а от уничтожения буфера защищает destroy-listener сюрфейса. */
+     struct wl_resource* bufferResource = surface.bufferResource;
+-    surface.bufferResource = nullptr;
++    if (!bufferResource && !surface.dmabufBuffer)
++        return;
+ 
+     if (surface.dmabufBuffer)
+         surface.apiClient->exportLinuxDmabuf(surface.dmabufBuffer);
+--- a/src/ws-shm.cpp
++++ b/src/ws-shm.cpp
+@@ -45,7 +45,8 @@
+         return;
+ 
+     struct wl_resource* bufferResource = surface.bufferResource;
+-    surface.bufferResource = nullptr;
++    if (!bufferResource)
++        return;
+ 
+     if (surface.shmBuffer)
+         surface.apiClient->exportShmBuffer(bufferResource, surface.shmBuffer);

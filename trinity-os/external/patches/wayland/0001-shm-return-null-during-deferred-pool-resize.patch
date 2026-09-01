@@ -1,0 +1,41 @@
+shm: достраивать отложенный resize пула в wl_shm_buffer_get_data
+
+При внешней ссылке на пул resize откладывается, но get_data возвращал
+указатель по offset уже выросшего пула в старый маппинг — потребитель,
+копирующий stride*height байт, читал за границей и падал; а в сценарии
+«ссылку снимает показ следующего кадра» отложенный resize не завершался
+никогда, и все содержательные кадры пропадали. Достраиваем resize прямо
+здесь (mremap MAYMOVE); при неудаче отдаём только буферы, целиком
+лежащие в старом маппинге, иначе NULL — потребитель пропустит кадр.
+
+Signed-off-by: Trinity OS build <dmitrii.f@t27.ai>
+
+--- a/src/wayland-shm.c
++++ b/src/wayland-shm.c
+@@ -518,10 +518,22 @@
+ wl_shm_buffer_get_data(struct wl_shm_buffer *buffer)
+ {
+ 	if (buffer->pool->external_refcount &&
+-	    (buffer->pool->size != buffer->pool->new_size))
+-		wl_log("Buffer address requested when its parent pool "
+-		       "has an external reference and a deferred resize "
+-		       "pending.\n");
++	    (buffer->pool->size != buffer->pool->new_size)) {
++		/* Отложенный resize: маппинг старого размера, а геометрия
++		 * буфера может описывать уже выросший пул. Достраиваем
++		 * resize немедленно — mremap(MAYMOVE) безопасен, потому что
++		 * валидные указатели наружу выдаёт только эта функция, а
++		 * держатели ссылок обязаны перезапрашивать data на каждый
++		 * доступ. Если remap не удался, отдаём указатель только на
++		 * буферы, целиком лежащие в старом маппинге, иначе NULL. */
++		shm_pool_finish_resize(buffer->pool);
++		if (buffer->pool->size != buffer->pool->new_size) {
++			int64_t end = (int64_t)buffer->offset +
++				      (int64_t)buffer->stride * buffer->height;
++			if (end > (int64_t)buffer->pool->size)
++				return NULL;
++		}
++	}
+ 	return buffer->pool->data + buffer->offset;
+ }
+ 

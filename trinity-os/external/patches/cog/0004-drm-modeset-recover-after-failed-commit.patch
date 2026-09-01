@@ -1,0 +1,61 @@
+drm/modeset: восстанавливаться после неудачного коммита
+
+Два сцепленных дефекта превращали единственный неудачный флип в вечный
+чёрный экран:
+1) mode_set выставлялся до drmModeAtomicCommit — если первый коммит с
+   ALLOW_MODESET падал (EACCES в гонке с fbcon при старте), CRTC
+   оставался невключённым, а все последующие коммиты шли без modeset;
+2) при отказе коммита буфер не освобождался и клиенту не посылался
+   frame_complete — WebKit прекращал производить кадры.
+Теперь mode_set фиксируется только после успешного коммита, а неудачный
+кадр отпускается с frame_complete — следующий кадр повторит modeset.
+
+Signed-off-by: Trinity OS build <dmitrii.f@t27.ai>
+
+--- a/platform/drm/cog-drm-modeset-renderer.c
++++ b/platform/drm/cog-drm-modeset-renderer.c
+@@ -408,8 +408,6 @@
+             drmModeAtomicFree(req);
+             return -1;
+         }
+-
+-        self->mode_set = true;
+     }
+ 
+     ret |= add_plane_property(self, req, self->plane_id, "FB_ID", buffer->fb_id);
+@@ -436,6 +434,11 @@
+         return -1;
+     }
+ 
++    /* Первый modeset считается сделанным только после успешного коммита:
++     * иначе неудача (например, EACCES в гонке с fbcon на старте) навсегда
++     * оставляла CRTC невключённым — все дальнейшие кадры шли в никуда. */
++    self->mode_set = true;
++
+     drmModeAtomicFree(req);
+     return 0;
+ }
+@@ -449,8 +452,22 @@
+     else
+         ret = drm_commit_buffer_nonatomic(self, buffer);
+ 
+-    if (ret)
++    if (ret) {
+         g_warning("failed to schedule a page flip: %s", g_strerror(errno));
++
++        /* Кадр не показан — отпускаем его и просим клиента продолжать,
++         * иначе конвейер кадров замирает после единственной неудачи. */
++        if (buffer->export.resource) {
++            wpe_view_backend_exportable_fdo_dispatch_release_buffer(self->exportable, buffer->export.resource);
++            buffer->export.resource = NULL;
++        }
++        if (buffer->export.shm_buffer) {
++            wpe_view_backend_exportable_fdo_dispatch_release_shm_exported_buffer(self->exportable,
++                                                                                 buffer->export.shm_buffer);
++            buffer->export.shm_buffer = NULL;
++        }
++        wpe_view_backend_exportable_fdo_dispatch_frame_complete(self->exportable);
++    }
+ }
+ 
+ static void

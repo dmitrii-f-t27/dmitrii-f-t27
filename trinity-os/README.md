@@ -3,10 +3,11 @@
 Первая ступень из `research/custom-os-for-spatial-apps-analysis.md`: собственный
 загружаемый образ ОС, который стартует сразу в полноэкранное spatial-приложение.
 
-Стек: **Linux 6.12 LTS → Mesa (Intel/AMD/virtio) → cog + WPE WebKit прямо на DRM/KMS**.
+Стек: **Linux 6.12 LTS → Mesa (Intel/AMD/virtio + софт-рендер llvmpipe) →
+cog + WPE WebKit прямо на DRM/KMS**.
 Ни X11, ни рабочего стола — только ядро, графический стек и веб-runtime.
-Демо-приложение на борту: CesiumJS-глобус с живыми самолётами (OpenSky) и
-землетрясениями (USGS) — «Worldview Lite». URL киоска меняется в одном файле.
+Первое приложение на борту: **Trinity Browser** — браузер с адресной строкой,
+закладками и поиском поверх встроенного WebKit. URL киоска меняется в одном файле.
 
 ## Требования к хосту сборки
 
@@ -49,7 +50,7 @@ trinity-os/
 │           ├── etc/init.d/S99kiosk      # cog -P drm $KIOSK_URL, автоперезапуск
 │           └── opt/trinity/
 │               ├── etc/kiosk.conf       # KIOSK_URL — единственная настройка
-│               └── app/index.html       # Worldview Lite (Cesium + OpenSky + USGS)
+│               └── app/                 # index.html — рабочий стол; browser.html — Trinity Browser
 └── scripts/                      # qemu-run.sh, flash-to-disk.sh
 ```
 
@@ -57,7 +58,7 @@ trinity-os/
 
 - **Сменить приложение киоска**: отредактировать `KIOSK_URL` в
   `/opt/trinity/etc/kiosk.conf` на устройстве (или в overlay и пересобрать).
-  Когда развернём God's Eye View — указываем его URL, больше ничего не нужно.
+  Любое веб-приложение становится «приложением ОС» одной строкой конфига.
 - **Отладка**: Ctrl+Alt+F2 — getty на tty2; ssh — dropbear (задать пароль root
   при первом входе); лог киоска — `/var/log/kiosk.log`.
 - **Сеть**: DHCP на eth0 из коробки; время — chrony (важно для TLS).
@@ -67,5 +68,5 @@ trinity-os/
 - Обновления — только перезаписью образа (A/B OTA — это уже L1, RAUC).
 - WPE даёт WebGL2 — CesiumJS хватает; WebGPU появится на этапе Chromium/L1.
 - Wi-Fi требует донастройки (wpa_supplicant) — базово рассчитываем на Ethernet.
-- Демо-приложение тянет CesiumJS с CDN — киоску нужен интернет.
-  Следующий шаг — вендорить Cesium в образ и поднять data-fusion daemon (см. Phase 0, шаг 3).
+- Без GPU (или в QEMU без virgl) рендер идёт через llvmpipe — работает, но
+  медленнее аппаратного; на реальном Intel/AMD включаются iris/radeonsi.

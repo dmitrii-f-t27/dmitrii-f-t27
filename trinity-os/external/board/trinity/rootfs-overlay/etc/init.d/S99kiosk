@@ -17,11 +17,59 @@ start() {
     export XDG_CACHE_HOME=/var/cache/kiosk
     mkdir -p "$XDG_CACHE_HOME"
 
-    printf "Starting kiosk (%s): " "$KIOSK_URL"
+    # Выбор рендерера cog:
+    #  - gles    — аппаратный (iris/radeonsi на железе, virgl в KVM);
+    #  - modeset — программный SHM-путь (llvmpipe/kms_swrast), единственный
+    #              рабочий вариант на virtio-gpu без virgl (QEMU без -gl).
+    # Признак virgl — первый бит фич virtio-устройства (VIRTIO_GPU_F_VIRGL).
+    RENDERER="$KIOSK_RENDERER"
+    if [ -z "$RENDERER" ]; then
+        # gles — только на драйверах с настоящим GL (Intel/AMD, virtio+virgl);
+        # bochs/прочие и virtio без virgl — программный modeset
+        drv=$(basename "$(readlink /sys/class/drm/card0/device/driver 2>/dev/null)" 2>/dev/null)
+        case "$drv" in
+            i915|amdgpu) RENDERER=gles ;;
+            virtio*)
+                RENDERER=modeset
+                for f in /sys/class/drm/card0/device/virtio*/features; do
+                    [ -r "$f" ] || continue
+                    [ "$(head -c1 "$f")" = "1" ] && RENDERER=gles
+                done
+                ;;
+            *) RENDERER=modeset ;;
+        esac
+    fi
+
+    printf "Starting kiosk (%s, renderer=%s): " "$KIOSK_URL" "$RENDERER"
+    touch "$LOG"
     (
+        fails=0
         while :; do
-            cog -P drm "$KIOSK_URL" >> "$LOG" 2>&1
-            echo "kiosk: cog exited ($?), restarting in 2s" >> "$LOG"
+            start=$(date +%s)
+            logmark=$(wc -l < "$LOG" 2>/dev/null || echo 0)
+            COG_PLATFORM_PARAMS="renderer=$RENDERER" cog -P drm "$KIOSK_URL" >> "$LOG" 2>&1 &
+            COGPID=$!
+            # Сторож: падающий по кругу WPEWebProcess не роняет cog — добиваем сами
+            while kill -0 "$COGPID" 2>/dev/null; do
+                sleep 5
+                crashes=$(tail -n "+$((logmark + 1))" "$LOG" 2>/dev/null | grep -c "renderer process crashed")
+                if [ "$crashes" -ge 3 ]; then
+                    echo "kiosk: WPEWebProcess crash-loop, перезапускаю cog" >> "$LOG"
+                    kill "$COGPID" 2>/dev/null
+                    break
+                fi
+            done
+            wait "$COGPID"
+            rc=$?
+            dur=$(( $(date +%s) - start ))
+            echo "kiosk: cog ($RENDERER) exited ($rc) after ${dur}s, restarting in 2s" >> "$LOG"
+            if [ "$RENDERER" = "gles" ] && [ "$dur" -lt 30 ]; then
+                fails=$((fails + 1))
+                if [ "$fails" -ge 2 ]; then
+                    echo "kiosk: gles не взлетает — перехожу на софт-рендер (modeset)" >> "$LOG"
+                    RENDERER=modeset
+                fi
+            fi
             sleep 2
         done
     ) &
