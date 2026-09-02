@@ -3,7 +3,7 @@
 Курируемая выборка из [affaan-m/ECC](https://github.com/affaan-m/ECC) (Everything Claude Code) —
 только то, что нужно под наш стек, вместо всех 286 скиллов и 68 агентов.
 
-- **Источник:** ECC v2.2.0, коммит `d8e6a51` от 2026-08-29 (MIT, см. `LICENSE-ECC`)
+- **Источник:** ECC v2.2.1, коммит `ca185ef` от 2026-08-31 (MIT, см. `LICENSE-ECC`)
 - **Стек, под который сделана выборка:** Zig, Verilog/FPGA, Python, C (репозитории Trinity: trinity, trinity-fpga, t27, trinity-contracts)
 
 ## Состав (10 компонентов)
@@ -61,7 +61,7 @@ cd dmitrii-f-t27/ecc-starter
 
 ```bash
 git clone --depth 50 https://github.com/affaan-m/ECC /tmp/ecc && cd /tmp/ecc
-git log --oneline d8e6a51755c6971a65eef73419076d449df0f490..HEAD -- agents skills rules
+git log --oneline ca185ef5f7667078a1e70a763bd3a9c71c48acf0..HEAD -- agents skills rules
 ```
 
 Добавляем **только необходимое** под стек, обновляем этот README (пин коммита и таблицы).
