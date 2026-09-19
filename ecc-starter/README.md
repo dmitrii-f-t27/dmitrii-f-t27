@@ -3,7 +3,7 @@
 Курируемая выборка из [affaan-m/ECC](https://github.com/affaan-m/ECC) (Everything Claude Code) —
 только то, что нужно под наш стек, вместо всех 286 скиллов и 68 агентов.
 
-- **Источник:** ECC v2.2.1, коммит `8321021` от 2026-09-12 (MIT, см. `LICENSE-ECC`)
+- **Источник:** ECC v2.2.1, коммит `07756ce` от 2026-09-19 (MIT, см. `LICENSE-ECC`)
 - **Стек, под который сделана выборка:** Zig, Verilog/FPGA, Python, C (репозитории Trinity: trinity, trinity-fpga, t27, trinity-contracts)
 
 ## Состав (10 компонентов)
@@ -61,7 +61,14 @@ cd dmitrii-f-t27/ecc-starter
 
 ```bash
 git clone --depth 50 https://github.com/affaan-m/ECC /tmp/ecc && cd /tmp/ecc
-git log --oneline 8321021c54d670126ce3b2969d5deb880b4b0c2a..HEAD -- agents skills rules
+git log --oneline 07756cee15788a54506031462794ad645719b028..HEAD -- agents skills rules
 ```
 
 Добавляем **только необходимое** под стек, обновляем этот README (пин коммита и таблицы).
+
+**Намеренные расхождения с апстримом:**
+
+- `rules/common/agents.md` — оставлен в варианте до апстрим-коммита `6e024eb8`:
+  апстрим переписал его под установку через плагин (имена агентов `ecc:planner` и т.п.),
+  а у нас агенты вендорятся напрямую в `.claude/agents/` и зовутся без префикса
+  (`planner`, `code-reviewer`, ...). Не синхронизировать этот файл вслепую.
