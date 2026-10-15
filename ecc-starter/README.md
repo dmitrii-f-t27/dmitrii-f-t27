@@ -6,7 +6,7 @@
 - **Источник:** ECC v2.2.1, коммит `c70874f` от 2026-09-29 (MIT, см. `LICENSE-ECC`)
 - **Стек, под который сделана выборка:** Zig, Verilog/FPGA, Python, C (репозитории Trinity: trinity, trinity-fpga, t27, trinity-contracts)
 
-## Состав (10 компонентов)
+## Состав (11 компонентов)
 
 ### Агенты (`agents/` → `~/.claude/agents/`)
 
@@ -27,6 +27,7 @@
 | `tdd-workflow` | Тест-до-кода процесс |
 | `verification-loop` | Цикл верификации изменений перед сдачей |
 | `latency-critical-systems` | Hot paths, p95, freshness — релевантно ternary-инференсу и стримингу |
+| `prompt-audit` | **Свой, не из ECC.** Чистит CLAUDE.md и скиллы от инструкций под старые модели (перепроверки, КАПС, пошаговые скрипты); правки только после одобрения. См. `skills/prompt-audit/README.md` |
 
 ### Правила (`rules/` → `~/.claude/rules/ecc/`)
 
