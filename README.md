@@ -1,18 +1,14 @@
 ## Dmitrii Fedorov
 
-Co-founder and angel investor at **Trinity (TRI-27)** — a ternary compute stack: GF16 arithmetic, BitNet-style LLM inference and VSA, verified on open-source FPGA silicon.
+I founded [Ternara](https://ternara.net) to build chips that run AI on the device. We test workloads on FPGA prototypes before committing to a custom chip.
 
-I cover the business side — capital, partnerships, market entry — and contribute code on the hardware side. The engineering lead on Trinity is [@gHashTag](https://github.com/gHashTag).
+### What we're building at Ternara
 
-**Trinity repositories**
+- **Chips for on-device AI.** We are developing five chip families for local inference, with research into ternary computing.
+- **FPGA pilots.** We start with one workload and build a prototype so teams can evaluate it on hardware before investing in a chip design.
+- **Q27.** We develop a language for deterministic ternary computation. The published v0.2 snapshot describes the language semantics and how they were validated. [Read the Q27 publication](https://zenodo.org/records/24205132).
 
-[trinity](https://github.com/gHashTag/trinity) — the ternary compute stack: tri CLI, BitNet LLM, VSA, GF16
-
-[trinity-fpga](https://github.com/gHashTag/trinity-fpga) — 83 number formats on open-source silicon
-
-[t27](https://github.com/gHashTag/t27) — spec-first ternary language, .t27 to synthesizable RTL
-
-[trinity-contracts](https://github.com/gHashTag/trinity-contracts) — on-chain mining protocol
+Co-founder of [Trinity (TRI-27)](https://github.com/gHashTag/trinity).
 
 **Elsewhere**
 
